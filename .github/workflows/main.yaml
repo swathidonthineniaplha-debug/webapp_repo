@@ -1,4 +1,4 @@
-name: Deploy HTML to Azure Web App
+name: Deploy .NET 10 Program.cs to Azure Web App
 
 on:
   push:
@@ -6,26 +6,56 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 env:
   AZURE_WEBAPP_NAME: alphawebapp1
-  PACKAGE_PATH: '.'
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
+      # Step 1: Checkout repository
       - name: Checkout GitHub Repository
         uses: actions/checkout@v4
 
-      - name: Verify index.html
+      # Step 2: Display repository files
+      - name: Verify Project Files
         run: |
-          test -f index.html
-          echo "index.html found successfully"
+          ls -la
+          test -f Program.cs
+          PROJECT_FILE=$(find . -maxdepth 1 -name '*.csproj' -print -quit)
+          if [ -z "$PROJECT_FILE" ]; then
+            echo "ERROR: No .csproj file found in repository root."
+            exit 1
+          fi
+          echo "PROJECT_FILE=$PROJECT_FILE" >> "$GITHUB_ENV"
+          echo "Found project: $PROJECT_FILE"
 
+      # Step 3: Install .NET 10 SDK
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # Step 4: Restore dependencies
+      - name: Restore Dependencies
+        run: dotnet restore "$PROJECT_FILE"
+
+      # Step 5: Publish application
+      - name: Publish .NET Application
+        run: |
+          dotnet publish "$PROJECT_FILE" \
+            --configuration Release \
+            --no-restore \
+            --output "$GITHUB_WORKSPACE/publish"
+
+      # Step 6: Deploy to Azure Web App
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
-          package: ${{ env.PACKAGE_PATH }}
+          package: ./publish
